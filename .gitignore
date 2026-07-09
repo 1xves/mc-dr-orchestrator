@@ -1,0 +1,38 @@
+# Terraform secrets — NEVER commit these
+terraform.tfvars
+*.tfvars
+*.tfvars.json
+*.tfplan
+tfplan
+
+# Terraform state — managed remotely in S3
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+*.env
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# Lambda zip artifacts
+scripts/*.zip
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

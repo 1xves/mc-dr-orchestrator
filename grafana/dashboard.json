@@ -1,0 +1,414 @@
+{
+  "title": "Multi-Cloud DR Orchestrator",
+  "uid": "mc-dr-dashboard",
+  "tags": ["dr", "multi-cloud", "sre"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+
+  "annotations": {
+    "list": [
+      {
+        "name": "Failover Events",
+        "datasource": { "type": "cloudwatch", "uid": "cloudwatch-ds" },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "namespace=DR/Failover metric=FailoverSuccess",
+        "tags": ["failover"]
+      }
+    ]
+  },
+
+  "templating": {
+    "list": [
+      {
+        "name": "datasource_aws",
+        "type": "datasource",
+        "pluginId": "cloudwatch",
+        "label": "AWS CloudWatch"
+      },
+      {
+        "name": "datasource_azure",
+        "type": "datasource",
+        "pluginId": "grafana-azure-monitor-datasource",
+        "label": "Azure Monitor"
+      }
+    ]
+  },
+
+  "panels": [
+
+    {
+      "id": 1,
+      "title": "Primary Endpoint Health",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN",    "color": "red"   } } },
+            { "type": "value", "options": { "1": { "text": "HEALTHY", "color": "green" } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",   "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${datasource_aws}" },
+          "namespace": "DR/HealthMonitor",
+          "metricName": "PrimaryHealthy",
+          "statistics": ["Maximum"],
+          "period": "60"
+        }
+      ]
+    },
+
+    {
+      "id": 2,
+      "title": "Consecutive Failures",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "options": { "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": 0 },
+              { "color": "yellow", "value": 1 },
+              { "color": "red",    "value": 3 }
+            ]
+          },
+          "unit": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${datasource_aws}" },
+          "namespace": "DR/HealthMonitor",
+          "metricName": "ConsecutiveFailures",
+          "statistics": ["Maximum"],
+          "period": "30"
+        }
+      ]
+    },
+
+    {
+      "id": 3,
+      "title": "Last Failover Event",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value_and_name" },
+      "fieldConfig": {
+        "defaults": { "unit": "dateTimeAsLocal" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${datasource_aws}" },
+          "namespace": "DR/Failover",
+          "metricName": "FailoverSuccess",
+          "statistics": ["SampleCount"],
+          "period": "86400"
+        }
+      ]
+    },
+
+    {
+      "id": 4,
+      "title": "Active Cloud",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "options": { "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "AWS (Primary)", "color": "orange" } } },
+            { "type": "value", "options": { "1": { "text": "Azure (DR)",    "color": "blue"   } } }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${datasource_aws}" },
+          "namespace": "DR/Failover",
+          "metricName": "ActiveCloud",
+          "statistics": ["Maximum"],
+          "period": "60"
+        }
+      ]
+    },
+
+    {
+      "id": 5,
+      "title": "RTO Achieved (seconds) — Target: <900s",
+      "type": "gauge",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 6 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "max": 1200,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": 0   },
+              { "color": "yellow", "value": 600  },
+              { "color": "red",    "value": 900  }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${datasource_aws}" },
+          "namespace": "DR/Failover",
+          "metricName": "RTOAchieved",
+          "statistics": ["Maximum"],
+          "period": "3600"
+        }
+      ]
+    },
+
+    {
+      "id": 6,
+      "title": "RPO — Replication Lag (seconds) — Target: <60s",
+      "type": "gauge",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 6 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "max": 120,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": 0  },
+              { "color": "yellow", "value": 30 },
+              { "color": "red",    "value": 60 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${datasource_aws}" },
+          "namespace": "AWS/RDS",
+          "metricName": "ReplicaLag",
+          "statistics": ["Average"],
+          "period": "60",
+          "dimensions": { "DBInstanceIdentifier": "mc-dr-primary-pg" }
+        }
+      ]
+    },
+
+    {
+      "id": 7,
+      "title": "Primary Endpoint Latency (ms)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 10, "w": 12, "h": 8 },
+      "options": {
+        "tooltip": { "mode": "single" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": { "mode": "palette-classic" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": 0    },
+              { "color": "yellow", "value": 1000 },
+              { "color": "red",    "value": 3000 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${datasource_aws}" },
+          "namespace": "DR/HealthMonitor",
+          "metricName": "PrimaryLatency",
+          "statistics": ["p50", "p95", "p99"],
+          "period": "60"
+        }
+      ]
+    },
+
+    {
+      "id": 8,
+      "title": "VPN Tunnel State (1=UP, 0=DOWN)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 10, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0, "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",   "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${datasource_aws}" },
+          "namespace": "AWS/VPN",
+          "metricName": "TunnelState",
+          "statistics": ["Maximum"],
+          "period": "60",
+          "refId": "Tunnel1",
+          "label": "Tunnel 1"
+        },
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${datasource_aws}" },
+          "namespace": "AWS/VPN",
+          "metricName": "TunnelState",
+          "statistics": ["Maximum"],
+          "period": "60",
+          "refId": "Tunnel2",
+          "label": "Tunnel 2"
+        }
+      ]
+    },
+
+    {
+      "id": 9,
+      "title": "RDS CPU Utilization (%)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 18, "w": 8, "h": 7 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": 0  },
+              { "color": "yellow", "value": 60 },
+              { "color": "red",    "value": 80 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${datasource_aws}" },
+          "namespace": "AWS/RDS",
+          "metricName": "CPUUtilization",
+          "statistics": ["Average"],
+          "period": "60",
+          "dimensions": { "DBInstanceIdentifier": "mc-dr-primary-pg" }
+        }
+      ]
+    },
+
+    {
+      "id": 10,
+      "title": "EKS Node Count",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 18, "w": 8, "h": 7 },
+      "options": { "colorMode": "value", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${datasource_aws}" },
+          "namespace": "AWS/EKS",
+          "metricName": "node_number_of_running_nodes",
+          "statistics": ["Average"],
+          "period": "60",
+          "dimensions": { "ClusterName": "mc-dr-eks" },
+          "label": "AWS EKS"
+        }
+      ]
+    },
+
+    {
+      "id": 11,
+      "title": "AKS Node Count (0 = standby, >0 = active DR)",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 18, "w": 8, "h": 7 },
+      "options": { "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red",   "value": 1 }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "0 (Standby)", "color": "green" } } }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "${datasource_azure}" },
+          "azureMonitor": {
+            "resourceGroup": "mc-dr-dr-rg",
+            "resourceType": "Microsoft.ContainerService/managedClusters",
+            "resourceName": "mc-dr-aks",
+            "metricName": "node_count",
+            "aggregation": "Average",
+            "timeGrain": "PT1M"
+          },
+          "label": "Azure AKS"
+        }
+      ]
+    },
+
+    {
+      "id": 12,
+      "title": "Failover History",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 25, "w": 24, "h": 6 },
+      "options": { "sortBy": [{ "displayName": "Time", "desc": true }] },
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "RTO (s)" },
+            "properties": [{ "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "red", "value": 900 }] } }] }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "${datasource_aws}" },
+          "namespace": "DR/Failover",
+          "metricName": "RTOAchieved",
+          "statistics": ["Maximum"],
+          "period": "3600"
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "renameByName": { "Value #A": "RTO (s)", "Time": "Failover Time" } } }
+      ]
+    }
+  ]
+}
