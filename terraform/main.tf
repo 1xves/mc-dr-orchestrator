@@ -28,6 +28,8 @@ resource "google_project_service" "apis" {
     "monitoring.googleapis.com",
     "logging.googleapis.com",
     "billingbudgets.googleapis.com",
+    "cloudfunctions.googleapis.com", # Gen1 billing-stopper function
+    "cloudbuild.googleapis.com",     # builds the function source zip
   ])
 
   project            = var.gcp_project_id
@@ -450,5 +452,11 @@ resource "google_billing_budget" "main" {
   threshold_rules {
     threshold_percent = 1.0
     spend_basis       = "CURRENT_SPEND"
+  }
+
+  # Publish to dedicated billing-alerts topic — consumed by billing_stopper (kill-switch)
+  all_updates_rule {
+    pubsub_topic   = google_pubsub_topic.billing_alerts[0].id
+    schema_version = "1.0"
   }
 }
