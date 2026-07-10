@@ -1,30 +1,30 @@
 ###############################################################################
-# Azure VNet Module — Standby network topology
+# Azure VNet — standby network for AKS and PostgreSQL
 ###############################################################################
 
 resource "azurerm_resource_group" "main" {
-  name     = var.resource_group_name
+  name     = "${var.name}-rg"
   location = var.location
   tags     = var.tags
 }
 
 resource "azurerm_virtual_network" "main" {
   name                = "${var.name}-vnet"
+  address_space       = [var.vnet_cidr]
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-  address_space       = [var.vnet_cidr]
   tags                = var.tags
 }
 
 resource "azurerm_subnet" "aks" {
-  name                 = "${var.name}-aks-subnet"
+  name                 = "${var.name}-aks"
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = [cidrsubnet(var.vnet_cidr, 4, 0)]
 }
 
 resource "azurerm_subnet" "postgresql" {
-  name                 = "${var.name}-postgresql-subnet"
+  name                 = "${var.name}-postgresql"
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = [cidrsubnet(var.vnet_cidr, 4, 1)]
@@ -39,43 +39,17 @@ resource "azurerm_subnet" "postgresql" {
 }
 
 resource "azurerm_subnet" "gateway" {
-  name                 = "GatewaySubnet" # Azure requires this exact name
+  name                 = "GatewaySubnet"   # Azure requires this exact name
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = [cidrsubnet(var.vnet_cidr, 4, 15)]
 }
 
-# ── Network Security Group for AKS ────────────────────────────────────────────
 resource "azurerm_network_security_group" "aks" {
   name                = "${var.name}-aks-nsg"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-
-  security_rule {
-    name                       = "AllowHTTPS"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "443"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
-
-  security_rule {
-    name                       = "AllowHTTP"
-    priority                   = 110
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "80"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
-
-  tags = var.tags
+  tags                = var.tags
 }
 
 resource "azurerm_subnet_network_security_group_association" "aks" {
@@ -83,17 +57,18 @@ resource "azurerm_subnet_network_security_group_association" "aks" {
   network_security_group_id = azurerm_network_security_group.aks.id
 }
 
-# ── Private DNS Zone for PostgreSQL ──────────────────────────────────────────
+# Private DNS zone for PostgreSQL Flexible Server
 resource "azurerm_private_dns_zone" "postgresql" {
-  name                = "${var.name}.postgres.database.azure.com"
+  name                = "${replace(var.name, "-", "")}psql.private.postgres.database.azure.com"
   resource_group_name = azurerm_resource_group.main.name
   tags                = var.tags
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "postgresql" {
-  name                  = "${var.name}-postgresql-dns-link"
+  name                  = "${var.name}-psql-dns-link"
+  resource_group_name   = azurerm_resource_group.main.name
   private_dns_zone_name = azurerm_private_dns_zone.postgresql.name
   virtual_network_id    = azurerm_virtual_network.main.id
-  resource_group_name   = azurerm_resource_group.main.name
+  registration_enabled  = false
   tags                  = var.tags
 }

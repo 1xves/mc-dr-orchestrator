@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: app
-  labels:
-    name: app
-    environment: dr-standby
-    cloud: azure

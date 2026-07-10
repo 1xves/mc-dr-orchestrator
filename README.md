@@ -1,267 +1,223 @@
-# Multi-Cloud Disaster Recovery Orchestrator
+# MC-DR Orchestrator
 
-Automated failover between AWS (primary) and Azure (standby) with sub-15-minute RTO and sub-60-second RPO. Infrastructure-as-code via Terraform, Python orchestration scripts, Chaos Mesh testing, and Grafana observability.
+Multi-cloud disaster recovery system with GCP as primary and Azure as standby. Automates failover, failback, and health monitoring across two clouds using Terraform-managed GKE and AKS clusters with containerized Postgres.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         AWS (Primary)                               │
-│                                                                     │
-│  Route53 (Failover DNS)                                             │
-│       │                                                             │
-│  ALB / NLB ──► EKS Cluster (3+ nodes, 3 AZs)                      │
-│                     │                                               │
-│              RDS PostgreSQL (Multi-AZ)                              │
-│                     │ pglogical logical replication                 │
-│                     │                                               │
-│  ◄──── Site-to-Site VPN (IKEv2 + BGP) ────►                       │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-                    health_monitor.py
-                    (polls every 30s)
-                              │
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Azure (Standby)                              │
-│                                                                     │
-│  AKS Cluster — app nodepool at 0 nodes (zero cost at rest)         │
-│                     │                                               │
-│         Azure Database for PostgreSQL Flexible Server               │
-│         (receives pglogical replication from AWS)                   │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+                    ┌─────────────────────────────┐
+                    │       Cloud DNS (GCP)        │
+                    │   api.yourdomain.com → GKE   │
+                    └────────────┬────────────────┘
+                                 │ normal traffic
+              ┌──────────────────▼───────────────────┐
+              │         GKE (us-central1-a)           │
+              │           PRIMARY cluster              │
+              │  - zonal (free management fee)        │
+              │  - Postgres StatefulSet + PVC          │
+              │  - Pub/Sub alerts via health_monitor   │
+              └──────────────────────────────────────┘
+                          ↕  failover/failback
+              ┌──────────────────────────────────────┐
+              │         AKS (eastus2)                │
+              │           STANDBY cluster             │
+              │  - autoscaler min=0 (idle cost ~$0)  │
+              │  - Postgres StatefulSet + PVC          │
+              │  - scales to 2 nodes on failover      │
+              └──────────────────────────────────────┘
 ```
 
-### Failover Flow
-
-```
-Primary fails 3 checks (90s)
-        │
-        ▼
-health_monitor.py triggers failover.py
-        │
-        ├── 1. Scale AKS: 0 → 3 nodes         (~4 min)
-        ├── 2. Deploy workloads to AKS         (~2 min)
-        ├── 3. Promote Azure PostgreSQL        (<30s)
-        ├── 4. Update Route53 DNS              (~2 min)
-        └── 5. Notify via SNS/Slack
-                                               ─────────
-                                               Total: ~8–10 min
-```
+**Cost defaults (nodes at 0):** ~$0.84/month for persistent disk storage.
+`terraform destroy` reaches true $0.
 
 ---
 
-## Repository Structure
+## Cost guards
 
-```
-multi-cloud-dr-orchestrator/
-├── terraform/
-│   ├── providers.tf          # AWS + Azure provider config
-│   ├── main.tf               # Root module — wires everything together
-│   ├── variables.tf
-│   ├── outputs.tf            # Includes ready-to-paste .env block
-│   └── modules/
-│       ├── aws/
-│       │   ├── vpc/          # VPC, subnets, NAT GWs, flow logs
-│       │   ├── eks/          # EKS cluster, node groups, IRSA, CA
-│       │   ├── rds/          # PostgreSQL with pglogical params, secrets, alarms
-│       │   └── vpn/          # Customer GW, VGW, site-to-site VPN
-│       └── azure/
-│           ├── vnet/         # VNet, subnets, NSGs, private DNS
-│           ├── aks/          # AKS with zero-node app pool, Log Analytics
-│           ├── postgresql/   # Flexible Server with pglogical config
-│           └── vpn/          # Zone-redundant VPN GW, active-active BGP
-├── scripts/
-│   ├── health_monitor.py     # Polls primary, triggers failover on 3 failures
-│   ├── failover.py           # Orchestrates AWS→Azure failover (full/db/app)
-│   ├── failback.py           # Orchestrates Azure→AWS failback (manual only)
-│   └── requirements.txt
-├── chaos-experiments/
-│   ├── network-partition.yaml  # Full + partial network partition chaos
-│   └── pod-failure.yaml        # Pod kill, CPU stress, DNS failure
-├── grafana/
-│   └── dashboard.json          # DR dashboard (RTO, RPO, replication lag, health)
-├── k8s/
-│   ├── aws/                    # EKS namespace, deployment, HPA, PDB
-│   └── azure/                  # AKS namespace, deployment, tolerations
-├── .github/workflows/
-│   └── deploy.yml              # Lint → Plan → Apply → Smoke test
-└── runbooks/
-    ├── automated-failover.md   # What happens automatically + manual fallback
-    ├── manual-failback.md      # Step-by-step AWS recovery
-    └── partial-failover.md     # DB-only and app-only failover scenarios
-```
+All expensive resources default to off and require explicit opt-in:
+
+| Resource | Default | Flag | Est. cost if on |
+|---|---|---|---|
+| Cross-cloud VPN | OFF | `enable_vpn = true` | ~$280/month |
+| Cloud NAT | OFF | `enable_nat = true` | ~$32/month |
+| GKE node pool | 0 nodes | scale.sh up | ~$25/month (e2-standard-2) |
+| AKS node pool | 0 nodes | failover.py | ~$14/month (Standard_B2s) |
+| Postgres PVC (GKE) | always on | n/a | ~$0.40/month (10Gi) |
+| Postgres PVC (AKS) | always on | n/a | ~$0.44/month (10Gi) |
 
 ---
 
 ## Prerequisites
 
-- AWS account with permissions for EKS, RDS, VPC, Route53, SNS, CloudWatch
-- Azure subscription with permissions for AKS, PostgreSQL, VNet, VPN Gateway
-- Terraform ≥ 1.7
-- Python 3.12+
-- AWS CLI v2 configured
-- Azure CLI installed and logged in
-- `kubectl` installed
-- An S3 bucket for Terraform state + DynamoDB table for state locking
+- `gcloud` CLI authenticated (`gcloud auth application-default login`)
+- `az` CLI authenticated (`az login`)
+- `terraform` >= 1.5
+- `kubectl`
+- Python 3.11+
 
 ---
 
-## Quick Start
+## First-time setup
 
-### 1. Clone and configure
+### 1. Create GCP project
 
 ```bash
-git clone https://github.com/yourorg/multi-cloud-dr-orchestrator.git
-cd multi-cloud-dr-orchestrator
+gcloud projects create YOUR_PROJECT_ID
+gcloud config set project YOUR_PROJECT_ID
+gcloud billing projects link YOUR_PROJECT_ID --billing-account=XXXXXX-XXXXXX-XXXXXX
 ```
 
-Create `terraform/terraform.tfvars`:
-```hcl
-project_name          = "mc-dr"
-environment           = "production"
-aws_region            = "us-east-1"
-azure_location        = "eastus"
-azure_subscription_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-azure_tenant_id       = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-db_master_password    = "YourSecurePassword123!"
-alert_email           = "oncall@yourorg.com"
-route53_zone_id       = "ZXXXXXXXXXXXXX"
-domain_name           = "yourapp.com"
+### 2. Bootstrap GCS state bucket and enable APIs
+
+```bash
+./scripts/bootstrap_gcs.sh YOUR_PROJECT_ID us-central1
 ```
 
-### 2. Deploy infrastructure
+### 3. Configure variables
+
+```bash
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+# Edit terraform.tfvars — required fields:
+#   gcp_project_id, azure_subscription_id, db_master_password
+#   gcp_billing_account_id (optional — enables billing budget alert)
+```
+
+`terraform.tfvars` is gitignored. Never commit it.
+
+### 4. Initialize and apply
 
 ```bash
 cd terraform
-terraform init
-
-# Primary (AWS)
-terraform workspace new primary
-terraform apply -target=module.aws_vpc -target=module.aws_eks -target=module.aws_rds
-
-# Standby (Azure) — after Azure VPN GW IP is known
-terraform apply -target=module.azure_vnet -target=module.azure_aks -target=module.azure_postgresql
-
-# VPN interconnect + DNS
+terraform init -backend-config="bucket=mc-dr-terraform-state-YOUR_PROJECT_ID"
+terraform plan
 terraform apply
 ```
 
-### 3. Configure pglogical replication
+Postgres is deployed automatically to both clusters via `null_resource` local-exec after cluster creation.
+
+---
+
+## Scaling clusters up/down
 
 ```bash
-# On AWS RDS (publisher)
-psql -h $(terraform output -raw rds_endpoint) -U dbadmin -d appdb <<'EOF'
-CREATE EXTENSION IF NOT EXISTS pglogical;
-SELECT pglogical.create_node(
-    node_name := 'aws_primary',
-    dsn := 'host=RDS_ENDPOINT dbname=appdb user=dbadmin password=PASSWORD'
-);
-SELECT pglogical.create_replication_set('default');
-SELECT pglogical.replication_set_add_all_tables('default', ARRAY['public']);
-SELECT pg_create_logical_replication_slot('replica_slot', 'pglogical');
-EOF
+# Scale both clusters up (activates nodes)
+./scripts/scale.sh up
 
-# On Azure PostgreSQL (subscriber)
-PGPASSWORD=$AZURE_PG_PASSWORD psql "host=$(terraform output -raw azure_postgresql_fqdn) dbname=appdb user=dbadmin sslmode=require" <<'EOF'
-CREATE EXTENSION IF NOT EXISTS pglogical;
-SELECT pglogical.create_node(
-    node_name := 'replica_node',
-    dsn := 'host=AZURE_PG_FQDN dbname=appdb user=dbadmin password=PASSWORD sslmode=require'
-);
-SELECT pglogical.create_subscription(
-    subscription_name := 'aws_subscription',
-    provider_dsn := 'host=RDS_ENDPOINT dbname=appdb user=dbadmin password=PASSWORD',
-    replication_sets := ARRAY['default'],
-    synchronize_data := true
-);
-EOF
-```
-
-### 4. Start the health monitor
-
-```bash
-cd scripts
-pip install -r requirements.txt
-
-# Copy the .env block from Terraform outputs
-terraform -chdir=../terraform output health_monitor_env > .env
-
-python health_monitor.py \
-  --primary-url https://api.yourapp.com/healthz \
-  --check-interval 30 \
-  --failure-threshold 3
-```
-
-### 5. Run a Chaos Mesh DR test
-
-```bash
-# Install Chaos Mesh
-helm repo add chaos-mesh https://charts.chaos-mesh.org
-helm install chaos-mesh chaos-mesh/chaos-mesh -n chaos-testing --create-namespace
-
-# Run the full DR workflow test
-kubectl apply -f chaos-experiments/network-partition.yaml
-
-# Watch the failover
-kubectl get workflow -n chaos-testing -w
-
-# Check results
-kubectl logs -n chaos-testing -l app=verify
+# Scale both clusters back to 0 (idle, PVC retained)
+./scripts/scale.sh down
 ```
 
 ---
 
-## Targets
+## DR operations
 
-| Metric | Target | How measured |
-|--------|--------|-------------|
-| RTO | < 15 minutes | Time from first failed check → DNS resolves to Azure |
-| RPO | < 60 seconds | Replication lag at time of failover (pglogical lag metric) |
-| Standby cost | ~$50–80/month | AKS at 0 nodes; only control plane + PostgreSQL server |
-| Health check interval | 30 seconds | Configurable via `--check-interval` |
-| Failover trigger | 3 consecutive failures | ~90s detection window |
+### Health monitoring
+
+Monitors the GKE primary endpoint. Alerts via Pub/Sub and Slack on 3 consecutive failures.
+
+```bash
+export GCP_PROJECT_ID=your-project-id
+export PUBSUB_TOPIC_ID=mc-dr-dr-alerts
+export PRIMARY_URL=https://api.yourdomain.com/healthz
+
+python scripts/health_monitor.py
+```
+
+### Failover (GKE → AKS)
+
+Scales up AKS, flips Cloud DNS to AKS LoadBalancer IP, publishes event.
+
+```bash
+python scripts/failover.py \
+  --gcp-project YOUR_PROJECT_ID \
+  --dns-zone mc-dr-zone \
+  --dns-name api.yourdomain.com \
+  --azure-rg mc-dr-standby-rg \
+  --aks-cluster mc-dr-aks \
+  --aks-ingress-ip AZURE_LB_IP
+
+# Dry run (no changes):
+python scripts/failover.py ... --dry-run
+```
+
+### Failback (AKS → GKE)
+
+Verifies GKE is stable (5 consecutive checks), flips DNS back, scales AKS to 0.
+
+```bash
+python scripts/failback.py \
+  --gcp-project YOUR_PROJECT_ID \
+  --dns-zone mc-dr-zone \
+  --dns-name api.yourdomain.com \
+  --gke-ingress-ip GKE_LB_IP \
+  --azure-rg mc-dr-standby-rg \
+  --aks-cluster mc-dr-aks
+
+# Dry run:
+python scripts/failback.py ... --dry-run
+```
 
 ---
 
-## Grafana Dashboard
+## Repository layout
 
-Import `grafana/dashboard.json` into your Grafana instance. Configure two data sources:
-
-1. **AWS CloudWatch** — namespace `DR/HealthMonitor` and `DR/Failover`
-2. **Azure Monitor** — resource group `mc-dr-dr-rg`
-
-Panels included: primary health, consecutive failures, last failover event, active cloud, RTO gauge, RPO/replication lag gauge, endpoint latency, VPN tunnel state, RDS CPU, EKS/AKS node counts, failover history table.
+```
+mc-dr-orchestrator/
+├── terraform/
+│   ├── main.tf               # Root: GKE, AKS, Pub/Sub, Cloud Monitoring, VPN (gated)
+│   ├── variables.tf
+│   ├── outputs.tf
+│   ├── providers.tf          # GCS backend
+│   └── modules/
+│       ├── gcp/vpc/          # VPC, Cloud NAT (gated), HA VPN gateway
+│       ├── gcp/gke/          # Zonal GKE cluster
+│       ├── azure/vnet/       # VNet, subnets, NSG
+│       └── azure/aks/        # AKS cluster, Log Analytics
+├── k8s/
+│   ├── gcp/postgres/         # Namespace, StatefulSet, Service, Secret (GKE)
+│   └── azure/postgres/       # Same manifests for AKS (managed-csi storage class)
+├── scripts/
+│   ├── bootstrap_gcs.sh      # One-time GCS bucket + API enablement
+│   ├── scale.sh              # Scale nodes up/down without applying Terraform
+│   ├── health_monitor.py     # Continuous GKE health check; alerts via Pub/Sub
+│   ├── failover.py           # GKE → AKS cutover
+│   └── failback.py           # AKS → GKE restore
+├── docs/
+│   ├── runbooks/
+│   │   ├── failover.md
+│   │   ├── failback.md
+│   │   └── cost-management.md
+│   └── architecture.md
+└── .github/workflows/
+    └── deploy.yml            # CI: terraform fmt/validate + script lint
+```
 
 ---
 
-## Suggested Enhancements
+## Observability
 
-The following improvements would make this system meaningfully more robust:
+Custom Cloud Monitoring metrics under `custom.googleapis.com/dr/`:
 
-**1. Replace Python health monitor with Lambda + EventBridge**
-The current monitor is a long-running process that itself becomes a single point of failure. Replacing it with an AWS Lambda on a 1-minute EventBridge schedule gives you managed availability, automatic retries, and CloudWatch Logs without running a server.
+| Metric | Description |
+|---|---|
+| `PrimaryHealthy` | 1 = healthy, 0 = failed |
+| `PrimaryLatencyMs` | Response time in milliseconds |
+| `ConsecutiveFailures` | Rolling failure count |
+| `FailoverCompleted` | 1 = success, 0 = failed |
+| `FailoverDurationSeconds` | Time to complete failover |
+| `FailbackCompleted` | 1 = success, 0 = failed |
+| `FailbackDurationSeconds` | Time to complete failback |
 
-**2. Use AWS Global Accelerator instead of Route53 failover**
-Route53 DNS failover has an inherent TTL lag (even at TTL=60, clients cache). Global Accelerator provides anycast IP-level failover in seconds, not minutes — this alone could cut your RTO by 2–3 minutes.
+Pub/Sub topic `mc-dr-dr-alerts` receives all health and DR events.
 
-**3. Terraform `prevent_destroy` + state locking enforcement**
-Add `lifecycle { prevent_destroy = true }` to RDS and AKS resources and enforce state locking via the DynamoDB table to prevent accidental destruction of live DR infrastructure.
+---
 
-**4. Store failover state in DynamoDB, not in-memory**
-The current health monitor tracks `FAILOVER_TRIGGERED` in process memory. If the monitor process restarts, it loses this state and could double-trigger. A DynamoDB item with the current failover state is the correct solution.
+## Security notes
 
-**5. Automated chaos testing on a schedule**
-The Chaos Mesh experiment currently requires manual triggering. Use the `scheduler.cron` field in the Chaos Mesh workflow to run a DR test monthly in a low-traffic window, with automatic pass/fail reporting to Slack.
-
-**6. pglogical → AWS DMS for more reliable cross-cloud replication**
-pglogical over a VPN can suffer intermittent reconnects. AWS Database Migration Service (DMS) with CDC mode is purpose-built for heterogeneous, cross-network replication and handles reconnects more gracefully.
-
-**7. Separate Terraform workspaces with workspace-specific backends**
-Currently both clouds share one tfstate file. Separating AWS and Azure into independent workspaces with separate S3 keys prevents a failed Azure apply from blocking an AWS change.
-
-**8. mTLS between EKS and AKS during split-brain scenarios**
-If both clusters are briefly live simultaneously (app-only failover), requests could reach either. Adding mTLS with a shared certificate authority and cluster-identity headers lets the DB reject writes from the "wrong" cluster.
+- `terraform.tfvars` is gitignored — contains `db_master_password`
+- Postgres credentials injected as a Kubernetes Secret via `local-exec` (idempotent)
+- GKE: private nodes, Workload Identity, Shielded VMs, Calico network policy
+- AKS: Azure AD RBAC, managed identity, Log Analytics
+- Billing budget alert at $50/month with thresholds at 50%, 90%, 100%

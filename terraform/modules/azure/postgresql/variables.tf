@@ -8,7 +8,15 @@ variable "resource_group_name" {
 
 variable "location" {
   type    = string
-  default = "eastus"
+  default = "eastus2"
+}
+
+variable "subnet_id" {
+  type = string
+}
+
+variable "private_dns_zone_id" {
+  type = string
 }
 
 variable "pg_version" {
@@ -16,65 +24,25 @@ variable "pg_version" {
   default = "15"
 }
 
-variable "postgresql_subnet_id" {
-  type    = string
-  default = ""
-  description = "Unused — kept for compatibility. VNet integration removed due to cross-region constraint."
-}
-
-variable "private_dns_zone_id" {
-  type    = string
-  default = ""
-  description = "Unused — kept for compatibility. VNet integration removed due to cross-region constraint."
-}
-
-variable "administrator_login" {
-  type    = string
-  default = "dbadmin"
-}
-
-variable "administrator_password" {
-  type      = string
-  sensitive = true
+variable "sku_name" {
+  type        = string
+  default     = "B_Standard_B1ms"
+  description = "Burstable B_Standard_B1ms is cheapest; upgrade to GP_Standard_D2s_v3 for production"
 }
 
 variable "storage_mb" {
   type    = number
-  default = 131072
+  default = 32768   # 32 GB minimum
 }
 
-variable "sku_name" {
+variable "db_name" {
   type    = string
-  default = "GP_Standard_D2s_v3"
+  default = "drapp"
 }
 
-variable "backup_retention_days" {
-  type    = number
-  default = 7
-}
-
-variable "high_availability_mode" {
-  type    = string
-  default = "ZoneRedundant"
-}
-
-variable "database_name" {
-  type    = string
-  default = "appdb"
-}
-
-variable "aws_vpc_cidr" {
-  type    = string
-  default = "10.0.0.0/16"
-}
-
-variable "log_analytics_workspace_id" {
-  type = string
-}
-
-variable "action_group_id" {
-  type    = string
-  default = ""
+variable "db_password" {
+  type      = string
+  sensitive = true
 }
 
 variable "tags" {

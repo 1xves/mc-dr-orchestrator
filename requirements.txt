@@ -1,0 +1,20 @@
+# MC-DR Orchestrator — Python dependencies
+# GCP-primary / Azure-standby stack
+# No boto3 / AWS SDK
+
+# GCP
+google-cloud-pubsub>=2.21.0
+google-cloud-monitoring>=2.21.0
+google-cloud-dns>=3.4.0
+
+# Azure
+azure-identity>=1.16.0
+azure-mgmt-containerservice>=30.0.0
+
+# HTTP / utilities
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# Dev / testing
+pytest>=8.0.0
+pytest-mock>=3.14.0

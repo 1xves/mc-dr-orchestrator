@@ -1,0 +1,42 @@
+###############################################################################
+# terraform.tfvars.example — copy to terraform.tfvars and fill in values
+# terraform.tfvars is gitignored — never commit it
+###############################################################################
+
+# ── Required — fill these in ──────────────────────────────────────────────────
+gcp_project_id   = "your-gcp-project-id"      # e.g. "mc-dr-prod-123456"
+gcp_state_bucket = "mc-dr-terraform-state-your-gcp-project-id"
+db_master_password = "YourStrongPasswordHere"
+alert_email      = "sylmobleyiii@gmail.com"
+
+# ── Billing budget (strongly recommended — find ID in Billing > Account settings)
+gcp_billing_account_id    = "XXXXXX-XXXXXX-XXXXXX"
+gcp_billing_budget_amount = 50
+
+# ── Cost guards — leave false until you explicitly need these resources ─────────
+# enable_vpn = false    # ~$210/month — Azure VPN Gateway + GCP HA VPN tunnels
+# enable_nat = false    # ~$32/month  — GCP Cloud NAT
+
+# ── Optional overrides (defaults shown) ───────────────────────────────────────
+project_name     = "mc-dr"
+environment      = "production"
+
+# GCP
+gcp_region             = "us-central1"
+gcp_vpc_cidr           = "10.0.0.0/16"
+gke_node_machine_type  = "e2-standard-2"
+gke_node_min_count     = 0
+gke_node_max_count     = 3
+gke_node_initial_count = 1
+kubernetes_version_gcp = "1.32"
+cloudsql_tier          = "db-f1-micro"
+
+# Azure
+azure_location          = "eastus2"
+azure_vnet_cidr         = "10.1.0.0/16"
+aks_node_vm_size        = "Standard_B2s"
+aks_node_min_count      = 0
+aks_node_max_count      = 3
+aks_node_initial_count  = 1
+kubernetes_version_azure = "1.32"
+azure_postgresql_sku    = "B_Standard_B1ms"

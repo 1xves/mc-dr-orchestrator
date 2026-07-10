@@ -1,34 +1,57 @@
 ###############################################################################
-# Provider configuration — AWS only
+# Provider configuration — GCP primary + Azure standby
 ###############################################################################
 
 terraform {
   required_version = ">= 1.5.0"
 
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.40"
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.25"
     }
-    tls = {
-      source  = "hashicorp/tls"
-      version = "~> 4.0"
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 5.25"
+    }
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.100"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
     }
   }
 
-  backend "s3" {
-    bucket         = "mc-dr-terraform-state-942228752997"
-    key            = "multi-cloud-dr/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-state-lock"
+  # State stored in GCS — run scripts/bootstrap_gcs.sh once before terraform init
+  backend "gcs" {
+    bucket = "mc-dr-terraform-state"   # overridden by -backend-config or workspace
+    prefix = "terraform/state"
   }
 }
 
-provider "aws" {
-  region = var.aws_region
+provider "google" {
+  project = var.gcp_project_id
+  region  = var.gcp_region
+}
 
-  default_tags {
-    tags = local.common_tags
+provider "google-beta" {
+  project = var.gcp_project_id
+  region  = var.gcp_region
+}
+
+provider "azurerm" {
+  features {
+    resource_group {
+      prevent_deletion_if_contains_resources = false
+    }
+    key_vault {
+      purge_soft_delete_on_destroy = true
+    }
   }
 }

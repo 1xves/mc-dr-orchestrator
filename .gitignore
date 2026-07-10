@@ -1,38 +1,26 @@
-# Terraform secrets — NEVER commit these
-terraform.tfvars
-*.tfvars
-*.tfvars.json
-*.tfplan
-tfplan
+# Terraform secrets — NEVER commit
+terraform/*.tfvars
+!terraform/*.tfvars.example
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform/
+terraform/.terraform.lock.hcl
 
-# Terraform state — managed remotely in S3
-*.tfstate
-*.tfstate.*
-*.tfstate.backup
-.terraform/
-.terraform.lock.hcl
+# Environment files
+.env
+.env.*
+!.env.example
+
+# GCP credentials
+*-key.json
+*credentials*.json
+application_default_credentials.json
 
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
-.env
-*.env
-*.egg-info/
-dist/
-build/
-venv/
 .venv/
+*.egg-info/
 
-# Lambda zip artifacts
-scripts/*.zip
-
-# OS noise
+# macOS
 .DS_Store
-Thumbs.db
-
-# Editor
-.vscode/
-.idea/
-*.swp
-*.swo

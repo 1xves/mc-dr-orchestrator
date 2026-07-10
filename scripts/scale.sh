@@ -1,70 +1,113 @@
 #!/usr/bin/env bash
 ###############################################################################
-# scale.sh — Start or stop the DR cluster to save money when not in use
+# scale.sh — Scale GCP + Azure clusters up/down to control cost
 #
 # Usage:
-#   ./scripts/scale.sh up      # Scale EKS nodes back up (start working)
-#   ./scripts/scale.sh down    # Scale EKS nodes to 0  (stop paying for compute)
-#   ./scripts/scale.sh status  # Show current node count + RDS state
+#   ./scripts/scale.sh up       — bring both clusters to minimum working state
+#   ./scripts/scale.sh down     — scale to zero (stops compute billing)
+#   ./scripts/scale.sh status   — show current node counts
+#
+# Cost impact:
+#   up:   ~$5-8/day (GKE nodes + AKS nodes + Cloud SQL + PostgreSQL Flexible)
+#   down: ~$1-2/day (GKE control plane $0.10/hr + Cloud SQL storage only)
+#
+# Requirements: gcloud CLI and az CLI both authenticated
 ###############################################################################
 
 set -euo pipefail
 
-CLUSTER="mc-dr-eks"
-NODEGROUP="mc-dr-eks-app"      # adjust if your node group name differs
-REGION="us-east-1"
-RDS_ID="mc-dr-primary-pg"
-PROFILE="${AWS_PROFILE:-ves-admin}"
+# ── Config ────────────────────────────────────────────────────────────────────
+GCP_PROJECT="${GCP_PROJECT_ID:-}"
+GCP_REGION="us-central1"
+GKE_CLUSTER="mc-dr-gke"
+GKE_NODEPOOL="mc-dr-gke-app"
 
-UP_COUNT=2    # nodes when working
-DOWN_COUNT=0  # nodes when idle
+AZURE_RG="mc-dr-standby-rg"
+AKS_CLUSTER="mc-dr-aks"
 
-cmd="${1:-status}"
+# ── Helpers ───────────────────────────────────────────────────────────────────
+check_deps() {
+  command -v gcloud >/dev/null 2>&1 || { echo "gcloud CLI not found"; exit 1; }
+  command -v az     >/dev/null 2>&1 || { echo "az CLI not found"; exit 1; }
 
-aws_cmd() { aws --profile "$PROFILE" --region "$REGION" "$@"; }
+  if [[ -z "${GCP_PROJECT}" ]]; then
+    GCP_PROJECT=$(gcloud config get-value project 2>/dev/null)
+    if [[ -z "${GCP_PROJECT}" ]]; then
+      echo "Set GCP_PROJECT_ID env var or run: gcloud config set project <PROJECT_ID>"
+      exit 1
+    fi
+  fi
+}
 
-case "$cmd" in
+scale_gke() {
+  local min_count=$1
+  local max_count=$2
+  echo "==> GKE: scaling nodepool '${GKE_NODEPOOL}' to min=${min_count} max=${max_count}"
+  gcloud container clusters resize "${GKE_CLUSTER}" \
+    --node-pool="${GKE_NODEPOOL}" \
+    --num-nodes="${min_count}" \
+    --region="${GCP_REGION}" \
+    --project="${GCP_PROJECT}" \
+    --quiet
+}
+
+scale_aks() {
+  local node_count=$1
+  echo "==> AKS: scaling cluster '${AKS_CLUSTER}' to ${node_count} nodes"
+  az aks scale \
+    --resource-group "${AZURE_RG}" \
+    --name "${AKS_CLUSTER}" \
+    --node-count "${node_count}" \
+    --output none
+}
+
+status_gke() {
+  echo "--- GKE nodes ---"
+  gcloud container node-pools describe "${GKE_NODEPOOL}" \
+    --cluster="${GKE_CLUSTER}" \
+    --region="${GCP_REGION}" \
+    --project="${GCP_PROJECT}" \
+    --format="table(name,initialNodeCount,autoscaling.minNodeCount,autoscaling.maxNodeCount)" 2>/dev/null || echo "  (cluster not found)"
+}
+
+status_aks() {
+  echo "--- AKS nodes ---"
+  az aks nodepool list \
+    --resource-group "${AZURE_RG}" \
+    --cluster-name "${AKS_CLUSTER}" \
+    --output table 2>/dev/null || echo "  (cluster not found)"
+}
+
+# ── Commands ──────────────────────────────────────────────────────────────────
+cmd="${1:-help}"
+check_deps
+
+case "${cmd}" in
   up)
-    echo "▶ Scaling EKS nodes UP to $UP_COUNT..."
-    aws_cmd eks update-nodegroup-config \
-      --cluster-name "$CLUSTER" \
-      --nodegroup-name "$NODEGROUP" \
-      --scaling-config minSize=0,maxSize=4,desiredSize=$UP_COUNT
-    echo "▶ Starting RDS instance (if stopped)..."
-    aws_cmd rds start-db-instance --db-instance-identifier "$RDS_ID" 2>/dev/null \
-      && echo "   RDS starting — takes ~5 min" \
-      || echo "   RDS already running"
-    echo "✅ Done. Allow ~3 min for nodes to become Ready."
+    echo "Scaling UP — bringing clusters to active state..."
+    scale_gke 1 3
+    scale_aks 1
+    echo ""
+    echo "Done. Get credentials:"
+    echo "  gcloud container clusters get-credentials ${GKE_CLUSTER} --region ${GCP_REGION} --project ${GCP_PROJECT}"
+    echo "  az aks get-credentials --resource-group ${AZURE_RG} --name ${AKS_CLUSTER}"
     ;;
-
   down)
-    echo "▶ Scaling EKS nodes DOWN to $DOWN_COUNT..."
-    aws_cmd eks update-nodegroup-config \
-      --cluster-name "$CLUSTER" \
-      --nodegroup-name "$NODEGROUP" \
-      --scaling-config minSize=0,maxSize=4,desiredSize=$DOWN_COUNT
-    echo "▶ Stopping RDS instance (saves ~\$0.96/hr — auto-resumes after 7 days)..."
-    aws_cmd rds stop-db-instance --db-instance-identifier "$RDS_ID" 2>/dev/null \
-      && echo "   RDS stopping — takes ~3 min" \
-      || echo "   RDS already stopped"
-    echo "✅ Done. You're now paying only for NAT gateway + VPN (~\$5/day)."
+    echo "Scaling DOWN — stopping compute to minimize cost..."
+    scale_gke 0 3
+    scale_aks 0
+    echo ""
+    echo "Done. Note: Cloud SQL and PostgreSQL Flexible Server continue to accrue"
+    echo "storage charges (~\$0.10-0.20/GB/month). To stop them too:"
+    echo "  terraform apply -var='cloudsql_tier=db-f1-micro' # already minimal"
     ;;
-
   status)
-    echo "── EKS Node Group ──────────────────────────────"
-    aws_cmd eks describe-nodegroup \
-      --cluster-name "$CLUSTER" \
-      --nodegroup-name "$NODEGROUP" \
-      --query 'nodegroup.scalingConfig' --output table
-    echo "── RDS Instance ────────────────────────────────"
-    aws_cmd rds describe-db-instances \
-      --db-instance-identifier "$RDS_ID" \
-      --query 'DBInstances[0].{Status:DBInstanceStatus,Class:DBInstanceClass,MultiAZ:MultiAZ}' \
-      --output table
+    status_gke
+    echo ""
+    status_aks
     ;;
-
   *)
-    echo "Usage: $0 [up|down|status]"
+    echo "Usage: $0 up|down|status"
     exit 1
     ;;
 esac
