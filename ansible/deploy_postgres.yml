@@ -1,0 +1,102 @@
+---
+# Deploy Postgres 15 StatefulSets to both clusters (GKE primary, AKS standby)
+# through the Kubernetes API with kubernetes.core. Replaces the former
+# Terraform null_resource local-exec kubectl pattern: fully idempotent,
+# supports --check --diff for drift detection, and never shells out.
+#
+# Usage:
+#   cd ansible
+#   ansible-galaxy collection install -r requirements.yml
+#   export DB_MASTER_PASSWORD=<password>
+#   ansible-playbook deploy_postgres.yml                    # both clusters
+#   ansible-playbook deploy_postgres.yml --limit gke-primary
+#   ansible-playbook deploy_postgres.yml --check --diff     # dry run / drift
+#
+# The AKS standby is normally stopped (cold standby). Deploy to it right
+# after terraform apply while it is still running, or start it first:
+#   az aks start --name mc-dr-aks --resource-group mc-dr-standby-rg
+#
+# If a node pool is scaled to zero the pods cannot schedule; skip the
+# readiness wait in that case: -e postgres_wait_for_ready=false
+
+- name: Deploy Postgres to GKE primary and AKS standby
+  hosts: clusters
+  gather_facts: false
+
+  pre_tasks:
+    - name: Require DB_MASTER_PASSWORD in the environment
+      ansible.builtin.assert:
+        that:
+          - db_master_password | length > 0
+        fail_msg: >-
+          DB_MASTER_PASSWORD is not set. Export it before running:
+          export DB_MASTER_PASSWORD=<password>
+        quiet: true
+      no_log: true
+
+    - name: Verify cluster API is reachable
+      block:
+        - name: Query cluster info via context {{ kube_context }}
+          kubernetes.core.k8s_cluster_info:
+            context: "{{ kube_context }}"
+          register: cluster_info
+      rescue:
+        - name: Fail with actionable guidance
+          ansible.builtin.fail:
+            msg: >-
+              Cannot reach {{ inventory_hostname }} via kubeconfig context
+              '{{ kube_context }}'. If this is the AKS cold standby it is
+              probably stopped; start it with 'az aks start --name mc-dr-aks
+              --resource-group mc-dr-standby-rg', or rerun with
+              --limit gke-primary. Confirm the context exists with
+              'kubectl config get-contexts' (see inventory/hosts.yml for the
+              credential-fetch commands).
+
+  tasks:
+    - name: Ensure database namespace exists
+      kubernetes.core.k8s:
+        context: "{{ kube_context }}"
+        state: present
+        template: templates/namespace.yaml.j2
+
+    - name: Ensure postgres-credentials secret
+      kubernetes.core.k8s:
+        context: "{{ kube_context }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: postgres-credentials
+            namespace: "{{ postgres_namespace }}"
+            labels:
+              app: postgres
+          type: Opaque
+          stringData:
+            POSTGRES_USER: "{{ postgres_user }}"
+            POSTGRES_DB: "{{ postgres_db }}"
+            POSTGRES_PASSWORD: "{{ db_master_password }}"
+      no_log: true
+
+    - name: Apply Postgres StatefulSet
+      kubernetes.core.k8s:
+        context: "{{ kube_context }}"
+        state: present
+        template: templates/statefulset.yaml.j2
+        wait: "{{ postgres_wait_for_ready | bool }}"
+        wait_timeout: "{{ statefulset_ready_timeout | int }}"
+
+    - name: Ensure Postgres services (ClusterIP and headless)
+      kubernetes.core.k8s:
+        context: "{{ kube_context }}"
+        state: present
+        template: templates/services.yaml.j2
+
+    - name: Report deployment result
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} ({{ cloud }}, {{ postgres_role }}):
+          Postgres applied in namespace {{ postgres_namespace }} with
+          storage class {{ storage_class }}.
+          {{ 'Rollout confirmed ready.' if postgres_wait_for_ready | bool
+             else 'Readiness wait skipped (postgres_wait_for_ready=false).' }}

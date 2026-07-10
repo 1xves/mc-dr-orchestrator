@@ -6,8 +6,10 @@
 # ── Required — fill these in ──────────────────────────────────────────────────
 gcp_project_id   = "your-gcp-project-id"      # e.g. "mc-dr-prod-123456"
 gcp_state_bucket = "mc-dr-terraform-state-your-gcp-project-id"
-db_master_password = "YourStrongPasswordHere"
 alert_email      = "sylmobleyiii@gmail.com"
+
+# Postgres password is NOT a Terraform variable anymore. Export
+# DB_MASTER_PASSWORD in your shell before running ansible/deploy_postgres.yml.
 
 # ── Billing budget (strongly recommended — find ID in Billing > Account settings)
 gcp_billing_account_id    = "XXXXXX-XXXXXX-XXXXXX"

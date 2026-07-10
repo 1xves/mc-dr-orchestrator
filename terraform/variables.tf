@@ -133,10 +133,9 @@ variable "db_name" {
   default = "drapp"
 }
 
-variable "db_master_password" {
-  type      = string
-  sensitive = true
-}
+# NOTE: db_master_password was removed. The Postgres credential is no longer
+# a Terraform concern; ansible/deploy_postgres.yml reads DB_MASTER_PASSWORD
+# from the environment at deploy time.
 
 # ── Alerting ──────────────────────────────────────────────────────────────────
 variable "alert_email" {

@@ -338,89 +338,11 @@ resource "azurerm_virtual_network_gateway_connection" "to_gcp_1" {
   tags       = local.common_tags
 }
 
-# ── Auto-deploy Postgres to GKE after cluster is ready ───────────────────────
-# Runs kubectl apply automatically as part of terraform apply.
-# Triggers re-run only if the cluster is recreated (name changes).
-resource "null_resource" "gke_postgres" {
-  depends_on = [module.gcp_gke]
-
-  triggers = {
-    cluster_name = module.gcp_gke.cluster_name
-    zone         = var.gcp_zone
-    project      = var.gcp_project_id
-  }
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      set -e
-      echo "==> Getting GKE credentials..."
-      gcloud container clusters get-credentials ${module.gcp_gke.cluster_name} \
-        --zone ${var.gcp_zone} \
-        --project ${var.gcp_project_id}
-
-      echo "==> Deploying Postgres namespace and manifests..."
-      kubectl apply -f ${path.module}/../k8s/gcp/postgres/namespace.yaml
-
-      echo "==> Creating Postgres secret (idempotent)..."
-      kubectl create secret generic postgres-credentials \
-        --namespace=database \
-        --from-literal=POSTGRES_USER=drapp \
-        --from-literal=POSTGRES_DB=drapp \
-        --from-literal=POSTGRES_PASSWORD=${var.db_master_password} \
-        --dry-run=client -o yaml | kubectl apply -f -
-
-      echo "==> Applying StatefulSet and Services..."
-      kubectl apply -f ${path.module}/../k8s/gcp/postgres/statefulset.yaml
-      kubectl apply -f ${path.module}/../k8s/gcp/postgres/service.yaml
-
-      echo "==> Waiting for Postgres pod to be ready..."
-      kubectl rollout status statefulset/postgres --namespace=database --timeout=300s
-
-      echo "==> GKE Postgres ready."
-    EOT
-  }
-}
-
-# ── Auto-deploy Postgres to AKS after cluster is ready ────────────────────────
-resource "null_resource" "aks_postgres" {
-  depends_on = [module.azure_aks]
-
-  triggers = {
-    cluster_name   = module.azure_aks.cluster_name
-    resource_group = module.azure_vnet.resource_group_name
-  }
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      set -e
-      echo "==> Getting AKS credentials..."
-      az aks get-credentials \
-        --name ${module.azure_aks.cluster_name} \
-        --resource-group ${module.azure_vnet.resource_group_name} \
-        --overwrite-existing
-
-      echo "==> Deploying Postgres namespace and manifests..."
-      kubectl apply -f ${path.module}/../k8s/azure/postgres/namespace.yaml
-
-      echo "==> Creating Postgres secret (idempotent)..."
-      kubectl create secret generic postgres-credentials \
-        --namespace=database \
-        --from-literal=POSTGRES_USER=drapp \
-        --from-literal=POSTGRES_DB=drapp \
-        --from-literal=POSTGRES_PASSWORD=${var.db_master_password} \
-        --dry-run=client -o yaml | kubectl apply -f -
-
-      echo "==> Applying StatefulSet and Services..."
-      kubectl apply -f ${path.module}/../k8s/azure/postgres/statefulset.yaml
-      kubectl apply -f ${path.module}/../k8s/azure/postgres/service.yaml
-
-      echo "==> Waiting for Postgres pod to be ready..."
-      kubectl rollout status statefulset/postgres --namespace=database --timeout=300s
-
-      echo "==> AKS Postgres ready."
-    EOT
-  }
-}
+# ── Postgres deployment ──────────────────────────────────────────────────────
+# Postgres StatefulSets are deployed to both clusters by Ansible, not by
+# Terraform. See ansible/deploy_postgres.yml (kubernetes.core, API-driven,
+# idempotent, drift-checkable with --check --diff). Terraform owns cluster
+# infrastructure only; it no longer shells out to kubectl.
 
 # ── GCP Billing Budget — fires alert before charges accumulate ─────────────────
 # Lesson from $245 Feature Store incident: budget alert is non-negotiable.

@@ -104,12 +104,34 @@ jobs:
 
           echo "Secret scan clean"
 
-  k8s-lint:
-    name: Kubernetes Manifest Lint
+  ansible:
+    name: Ansible Lint + Manifest Validate
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ansible toolchain
+        run: |
+          pip install --upgrade pip
+          pip install "ansible-core>=2.16" ansible-lint
+          ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: Playbook syntax check
+        working-directory: ansible
+        run: ansible-playbook --syntax-check deploy_postgres.yml render_manifests.yml
+
+      - name: Ansible lint
+        run: ansible-lint ansible/
+
+      - name: Render manifests for every inventory host
+        working-directory: ansible
+        run: ansible-playbook render_manifests.yml
 
       - name: Install kubeval
         run: |
@@ -117,8 +139,7 @@ jobs:
           tar xf kubeval-linux-amd64.tar.gz
           sudo mv kubeval /usr/local/bin/
 
-      - name: Validate GCP manifests
-        run: kubeval k8s/gcp/postgres/*.yaml --ignore-missing-schemas
-
-      - name: Validate Azure manifests
-        run: kubeval k8s/azure/postgres/*.yaml --ignore-missing-schemas
+      - name: Validate rendered manifests (both clusters)
+        run: |
+          find ansible/build/rendered -name '*.yaml' -print
+          find ansible/build/rendered -name '*.yaml' -exec kubeval --ignore-missing-schemas {} +

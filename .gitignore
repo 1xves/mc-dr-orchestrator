@@ -25,3 +25,6 @@ __pycache__/
 # macOS
 .DS_Store
 functions/*.zip
+
+# Ansible (rendered manifests are derived output, never source)
+ansible/build/

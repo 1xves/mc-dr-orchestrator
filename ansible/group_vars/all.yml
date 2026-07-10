@@ -1,0 +1,18 @@
+---
+postgres_namespace: database
+postgres_image: "postgres:15-alpine"
+postgres_user: drapp
+postgres_db: drapp
+postgres_replicas: 1
+postgres_storage_size: 10Gi
+postgres_pgdata: /var/lib/postgresql/data/pgdata
+
+# Wait for the StatefulSet rollout after apply. Set to false when deploying
+# to a cluster whose node pool is scaled to zero (pods cannot schedule until
+# nodes exist): -e postgres_wait_for_ready=false
+postgres_wait_for_ready: true
+statefulset_ready_timeout: 300
+
+# Secret comes from the environment at runtime; it is never stored in the
+# repo. The playbook asserts this is non-empty before touching any cluster.
+db_master_password: "{{ lookup('ansible.builtin.env', 'DB_MASTER_PASSWORD', default='') }}"

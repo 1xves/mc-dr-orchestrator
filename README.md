@@ -56,6 +56,7 @@ All expensive resources default to off and require explicit opt-in:
 - `terraform` >= 1.5
 - `kubectl`
 - Python 3.11+
+- `ansible-core` >= 2.16 with the `kubernetes.core` collection (Postgres deploys; see `ansible/README.md`)
 
 ---
 
@@ -80,8 +81,10 @@ gcloud billing projects link YOUR_PROJECT_ID --billing-account=XXXXXX-XXXXXX-XXX
 ```bash
 cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 # Edit terraform.tfvars — required fields:
-#   gcp_project_id, azure_subscription_id, db_master_password
+#   gcp_project_id, azure_subscription_id
 #   gcp_billing_account_id (optional — enables billing budget alert)
+# The Postgres password is not a Terraform variable; export DB_MASTER_PASSWORD
+# in your shell before the Ansible deploy step below.
 ```
 
 `terraform.tfvars` is gitignored. Never commit it.
@@ -95,7 +98,24 @@ terraform plan
 terraform apply
 ```
 
-Postgres is deployed automatically to both clusters via `null_resource` local-exec after cluster creation.
+### 5. Deploy Postgres with Ansible
+
+Terraform owns cluster infrastructure only. Postgres StatefulSets are deployed
+to both clusters (one playbook, one inventory, two clouds) through the
+Kubernetes API:
+
+```bash
+cd ansible
+ansible-galaxy collection install -r requirements.yml
+export DB_MASTER_PASSWORD=<password>
+
+ansible-playbook deploy_postgres.yml                     # both clusters
+ansible-playbook deploy_postgres.yml --limit gke-primary # one cluster
+ansible-playbook deploy_postgres.yml --check --diff      # dry run / drift check
+```
+
+Run this right after `terraform apply` while the AKS standby is still running
+(before `az aks stop`). Details and cold-standby caveats: `ansible/README.md`.
 
 ---
 
@@ -175,9 +195,13 @@ mc-dr-orchestrator/
 │       ├── gcp/gke/          # Zonal GKE cluster
 │       ├── azure/vnet/       # VNet, subnets, NSG
 │       └── azure/aks/        # AKS cluster, Log Analytics
-├── k8s/
-│   ├── gcp/postgres/         # Namespace, StatefulSet, Service, Secret (GKE)
-│   └── azure/postgres/       # Same manifests for AKS (managed-csi storage class)
+├── ansible/
+│   ├── inventory/hosts.yml   # gke-primary + aks-standby (kubeconfig contexts)
+│   ├── templates/            # Single Jinja2 manifest source for both clouds
+│   ├── deploy_postgres.yml   # API-driven Postgres deploy via kubernetes.core
+│   └── render_manifests.yml  # Render templates for CI validation
+├── functions/
+│   └── billing_stopper/      # Cloud Function: disables billing at 100% budget
 ├── scripts/
 │   ├── bootstrap_gcs.sh      # One-time GCS bucket + API enablement
 │   ├── scale.sh              # Scale nodes up/down without applying Terraform
@@ -191,7 +215,7 @@ mc-dr-orchestrator/
 │   │   └── cost-management.md
 │   └── architecture.md
 └── .github/workflows/
-    └── deploy.yml            # CI: terraform fmt/validate + script lint
+    └── deploy.yml            # CI: terraform validate, script lint, ansible-lint + rendered-manifest validation
 ```
 
 ---
@@ -216,8 +240,8 @@ Pub/Sub topic `mc-dr-dr-alerts` receives all health and DR events.
 
 ## Security notes
 
-- `terraform.tfvars` is gitignored — contains `db_master_password`
-- Postgres credentials injected as a Kubernetes Secret via `local-exec` (idempotent)
+- `terraform.tfvars` is gitignored; keep it that way (project and billing identifiers)
+- Postgres credentials are injected as a Kubernetes Secret by Ansible from the `DB_MASTER_PASSWORD` environment variable (`no_log`, asserted non-empty, never committed)
 - GKE: private nodes, Workload Identity, Shielded VMs, Calico network policy
 - AKS: Azure AD RBAC, managed identity, Log Analytics
 - Billing budget alert at $50/month with thresholds at 50%, 90%, 100%

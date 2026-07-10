@@ -1,0 +1,32 @@
+---
+# Render the Jinja2 manifest templates to plain YAML without touching any
+# cluster. Used by CI to kubeval the output for every inventory host, and
+# locally to preview exactly what deploy_postgres.yml would apply.
+#
+#   ansible-playbook render_manifests.yml
+#   ls build/rendered/
+#
+# build/ is gitignored; rendered output is derived, never source.
+
+- name: Render Postgres manifests for validation
+  hosts: clusters
+  gather_facts: false
+  vars:
+    render_dir: "{{ playbook_dir }}/build/rendered/{{ inventory_hostname }}"
+
+  tasks:
+    - name: Ensure render directory exists
+      ansible.builtin.file:
+        path: "{{ render_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Render manifest templates
+      ansible.builtin.template:
+        src: "templates/{{ item }}.j2"
+        dest: "{{ render_dir }}/{{ item }}"
+        mode: "0644"
+      loop:
+        - namespace.yaml
+        - statefulset.yaml
+        - services.yaml

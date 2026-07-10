@@ -1,19 +1,20 @@
 ###############################################################################
-# Postgres 15 StatefulSet — GKE primary
-# StorageClass: standard-rwo (GCP Persistent Disk, $0.04/GB/month)
-# PVC persists when nodes scale to 0 — data survives scale cycles
+# Postgres 15 StatefulSet ({{ cloud }} {{ postgres_role }})
+# Rendered by Ansible; per-cluster values come from inventory/hosts.yml.
+# StorageClass: {{ storage_class }}
+# PVC persists when nodes scale to 0; data survives scale cycles.
 ###############################################################################
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
-  namespace: database
+  namespace: {{ postgres_namespace }}
   labels:
     app: postgres
-    role: primary
+    role: {{ postgres_role }}
 spec:
   serviceName: postgres
-  replicas: 1
+  replicas: {{ postgres_replicas }}
   selector:
     matchLabels:
       app: postgres
@@ -21,12 +22,12 @@ spec:
     metadata:
       labels:
         app: postgres
-        role: primary
+        role: {{ postgres_role }}
     spec:
       terminationGracePeriodSeconds: 60
       containers:
         - name: postgres
-          image: postgres:15-alpine
+          image: {{ postgres_image }}
           ports:
             - containerPort: 5432
               name: postgres
@@ -35,7 +36,7 @@ spec:
                 name: postgres-credentials
           env:
             - name: PGDATA
-              value: /var/lib/postgresql/data/pgdata
+              value: {{ postgres_pgdata }}
           resources:
             requests:
               cpu: "100m"
@@ -51,7 +52,7 @@ spec:
               command:
                 - pg_isready
                 - -U
-                - drapp
+                - {{ postgres_user }}
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 6
@@ -60,7 +61,7 @@ spec:
               command:
                 - pg_isready
                 - -U
-                - drapp
+                - {{ postgres_user }}
             initialDelaySeconds: 5
             periodSeconds: 5
   volumeClaimTemplates:
@@ -68,7 +69,7 @@ spec:
         name: postgres-data
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: standard-rwo   # GCP Persistent Disk standard — $0.04/GB/month
+        storageClassName: {{ storage_class }}
         resources:
           requests:
-            storage: 10Gi
+            storage: {{ postgres_storage_size }}
