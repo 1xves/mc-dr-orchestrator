@@ -96,8 +96,8 @@ variable "azure_vnet_cidr" {
 
 variable "aks_node_vm_size" {
   type        = string
-  default     = "Standard_B2s"
-  description = "AKS node VM size — B2s (2 vCPU, 4GB burstable) is cost-effective for standby"
+  default     = "Standard_B2s_v2"
+  description = "AKS node VM size — B2s_v2 (2 vCPU, 8GB burstable); B2s(v1) is not offered in some subs/regions"
 }
 
 variable "aks_node_min_count" {

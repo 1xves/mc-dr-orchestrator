@@ -34,7 +34,7 @@ cloudsql_tier          = "db-f1-micro"
 # Azure
 azure_location          = "eastus2"
 azure_vnet_cidr         = "10.1.0.0/16"
-aks_node_vm_size        = "Standard_B2s"
+aks_node_vm_size        = "Standard_B2s_v2"
 aks_node_min_count      = 0
 aks_node_max_count      = 3
 aks_node_initial_count  = 1
