@@ -32,15 +32,15 @@ output "nat_enabled" {
 }
 
 output "ha_vpn_gateway_id" {
-  value = google_compute_ha_vpn_gateway.main.id
+  value = one(google_compute_ha_vpn_gateway.main[*].id)
 }
 
 output "ha_vpn_gateway_self_link" {
-  value = google_compute_ha_vpn_gateway.main.self_link
+  value = one(google_compute_ha_vpn_gateway.main[*].self_link)
 }
 
 output "ha_vpn_gateway_vpn_interfaces" {
-  value = google_compute_ha_vpn_gateway.main.vpn_interfaces
+  value = one(google_compute_ha_vpn_gateway.main[*].vpn_interfaces)
 }
 
 output "private_services_connection" {

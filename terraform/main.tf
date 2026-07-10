@@ -43,6 +43,7 @@ module "gcp_vpc" {
   vpc_cidr   = var.gcp_vpc_cidr
   region     = var.gcp_region
   enable_nat = var.enable_nat # default false — ~$32/month when on
+  enable_vpn = var.enable_vpn # default false — gates the HA VPN gateway
   tags       = local.common_labels
 
   depends_on = [google_project_service.apis]

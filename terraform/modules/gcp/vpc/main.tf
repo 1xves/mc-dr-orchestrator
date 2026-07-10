@@ -62,6 +62,7 @@ resource "google_compute_router_nat" "main" {
 
 # ── VPN Gateway — for cross-cloud tunnel to Azure ─────────────────────────────
 resource "google_compute_ha_vpn_gateway" "main" {
+  count   = var.enable_vpn ? 1 : 0
   name    = "${var.name}-ha-vpn-gw"
   region  = var.region
   network = google_compute_network.main.id
