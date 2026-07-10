@@ -118,7 +118,7 @@ variable "aks_node_initial_count" {
 
 variable "kubernetes_version_azure" {
   type    = string
-  default = "1.32"
+  default = "1.34" # 1.32 is LTS-only in AKS; use a standard supported version
 }
 
 variable "azure_postgresql_sku" {
