@@ -62,7 +62,7 @@ variable "gke_node_initial_count" {
 
 variable "kubernetes_version_gcp" {
   type    = string
-  default = "1.32"
+  default = "1.34" # 1.32 no longer offered in GKE us-central1 (STABLE is 1.34.x)
 }
 
 variable "cloudsql_tier" {

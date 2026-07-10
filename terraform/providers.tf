@@ -38,11 +38,17 @@ terraform {
 provider "google" {
   project = var.gcp_project_id
   region  = var.gcp_region
+  # Required so quota/billing APIs (e.g. billingbudgets) attach a quota project
+  # under user ADC — otherwise google_billing_budget 403s.
+  user_project_override = true
+  billing_project       = var.gcp_project_id
 }
 
 provider "google-beta" {
-  project = var.gcp_project_id
-  region  = var.gcp_region
+  project               = var.gcp_project_id
+  region                = var.gcp_region
+  user_project_override = true
+  billing_project       = var.gcp_project_id
 }
 
 provider "azurerm" {
