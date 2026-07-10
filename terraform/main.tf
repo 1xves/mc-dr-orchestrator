@@ -30,6 +30,7 @@ resource "google_project_service" "apis" {
     "billingbudgets.googleapis.com",
     "cloudfunctions.googleapis.com", # Gen1 billing-stopper function
     "cloudbuild.googleapis.com",     # builds the function source zip
+    "cloudbilling.googleapis.com",   # billing IAM binding for the kill-switch SA
   ])
 
   project            = var.gcp_project_id
