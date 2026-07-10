@@ -22,7 +22,7 @@ variable "kubernetes_version" {
 
 variable "node_vm_size" {
   type    = string
-  default = "Standard_B2s"
+  default = "Standard_D2as_v7" # keep in sync with root aks_node_vm_size; B2s is location-blocked in eastus2
 }
 
 variable "node_min_count" {

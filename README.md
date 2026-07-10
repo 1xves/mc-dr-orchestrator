@@ -43,7 +43,7 @@ All expensive resources default to off and require explicit opt-in:
 | Cross-cloud VPN | OFF | `enable_vpn = true` | ~$280/month |
 | Cloud NAT | OFF | `enable_nat = true` | ~$32/month |
 | GKE node pool | 0 nodes | scale.sh up | ~$25/month (e2-standard-2) |
-| AKS node pool | 0 nodes | failover.py | ~$14/month (Standard_B2s) |
+| AKS node pool | 0 nodes | failover.py | ~$66/month (Standard_D2as_v7, if left running) |
 | Postgres PVC (GKE) | always on | n/a | ~$0.40/month (10Gi) |
 | Postgres PVC (AKS) | always on | n/a | ~$0.44/month (10Gi) |
 

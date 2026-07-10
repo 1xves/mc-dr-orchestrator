@@ -96,8 +96,8 @@ variable "azure_vnet_cidr" {
 
 variable "aks_node_vm_size" {
   type        = string
-  default     = "Standard_B2s_v2"
-  description = "AKS node VM size — B2s_v2 (2 vCPU, 8GB burstable); B2s(v1) is not offered in some subs/regions"
+  default     = "Standard_D2as_v7"
+  description = "AKS node VM size. D2as_v7 (2 vCPU, 8GB, AMD) verified unrestricted in eastus2 with default family quota; B2s is location-blocked and B2s_v2/D*s_v5 have zero quota on new subscriptions"
 }
 
 variable "aks_node_min_count" {
