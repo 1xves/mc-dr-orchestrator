@@ -10,19 +10,19 @@ resource "google_compute_network" "main" {
 
 resource "google_compute_subnetwork" "gke" {
   name          = "${var.name}-gke-subnet"
-  ip_cidr_range = cidrsubnet(var.vpc_cidr, 4, 0)   # e.g. 10.0.0.0/20
+  ip_cidr_range = cidrsubnet(var.vpc_cidr, 4, 0) # e.g. 10.0.0.0/20
   region        = var.region
   network       = google_compute_network.main.id
 
   # Secondary ranges for GKE pods and services
   secondary_ip_range {
     range_name    = "${var.name}-pods"
-    ip_cidr_range = cidrsubnet(var.vpc_cidr, 2, 1)  # e.g. 10.0.64.0/18
+    ip_cidr_range = cidrsubnet(var.vpc_cidr, 2, 1) # e.g. 10.0.64.0/18
   }
 
   secondary_ip_range {
     range_name    = "${var.name}-services"
-    ip_cidr_range = cidrsubnet(var.vpc_cidr, 4, 2)  # e.g. 10.0.32.0/20
+    ip_cidr_range = cidrsubnet(var.vpc_cidr, 4, 2) # e.g. 10.0.32.0/20
   }
 
   private_ip_google_access = true
@@ -30,7 +30,7 @@ resource "google_compute_subnetwork" "gke" {
 
 resource "google_compute_subnetwork" "cloudsql" {
   name          = "${var.name}-db-subnet"
-  ip_cidr_range = cidrsubnet(var.vpc_cidr, 4, 1)   # e.g. 10.0.16.0/20
+  ip_cidr_range = cidrsubnet(var.vpc_cidr, 4, 1) # e.g. 10.0.16.0/20
   region        = var.region
   network       = google_compute_network.main.id
 

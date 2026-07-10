@@ -16,7 +16,7 @@ resource "azurerm_postgresql_flexible_server" "main" {
   zone                   = "1"
 
   backup_retention_days        = 7
-  geo_redundant_backup_enabled = false   # standby — backups stay local
+  geo_redundant_backup_enabled = false # standby — backups stay local
 
   tags = var.tags
 }

@@ -118,7 +118,7 @@ class FailoverOrchestrator:
         agent_pool.min_count = 1
         agent_pool.max_count = max(3, self.aks_node_count)
 
-        poller = self.aks_client.managed_clusters.begin_create_or_update(
+        self.aks_client.managed_clusters.begin_create_or_update(
             self.azure_rg, self.aks_cluster, cluster
         )
         log.info("AKS scale operation started — waiting for nodes to be ready...")

@@ -28,7 +28,7 @@ resource "google_project_iam_member" "gke_nodes_artifact_reader" {
 
 resource "google_container_cluster" "main" {
   name     = var.cluster_name
-  location = var.zone   # zonal cluster = $0 management fee (first cluster per billing account is free)
+  location = var.zone # zonal cluster = $0 management fee (first cluster per billing account is free)
 
   # Remove default node pool — we manage our own below
   remove_default_node_pool = true
@@ -40,7 +40,7 @@ resource "google_container_cluster" "main" {
   # Private cluster — nodes have no public IPs
   private_cluster_config {
     enable_private_nodes    = true
-    enable_private_endpoint = false        # keeps kubectl access from your machine
+    enable_private_endpoint = false # keeps kubectl access from your machine
     master_ipv4_cidr_block  = "172.16.0.0/28"
   }
 
@@ -99,9 +99,9 @@ resource "google_container_cluster" "main" {
 }
 
 resource "google_container_node_pool" "app" {
-  name       = "${var.cluster_name}-app"
-  location   = var.zone
-  cluster    = google_container_cluster.main.name
+  name     = "${var.cluster_name}-app"
+  location = var.zone
+  cluster  = google_container_cluster.main.name
 
   initial_node_count = var.node_initial_count
 

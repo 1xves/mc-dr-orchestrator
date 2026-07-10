@@ -30,7 +30,7 @@ terraform {
 
   # State stored in GCS — run scripts/bootstrap_gcs.sh once before terraform init
   backend "gcs" {
-    bucket = "mc-dr-terraform-state"   # overridden by -backend-config or workspace
+    bucket = "mc-dr-terraform-state" # overridden by -backend-config or workspace
     prefix = "terraform/state"
   }
 }

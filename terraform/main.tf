@@ -42,7 +42,7 @@ module "gcp_vpc" {
   name       = "${var.project_name}-primary"
   vpc_cidr   = var.gcp_vpc_cidr
   region     = var.gcp_region
-  enable_nat = var.enable_nat   # default false — ~$32/month when on
+  enable_nat = var.enable_nat # default false — ~$32/month when on
   tags       = local.common_labels
 
   depends_on = [google_project_service.apis]
@@ -55,7 +55,7 @@ module "gcp_gke" {
   cluster_name        = "${var.project_name}-gke"
   project_id          = var.gcp_project_id
   region              = var.gcp_region
-  zone                = var.gcp_zone   # zonal = $0 management fee (first cluster free)
+  zone                = var.gcp_zone # zonal = $0 management fee (first cluster free)
   network_name        = module.gcp_vpc.network_name
   subnet_name         = module.gcp_vpc.gke_subnet_name
   pods_range_name     = module.gcp_vpc.gke_pods_range_name

@@ -21,7 +21,7 @@ resource "google_sql_database_instance" "primary" {
     disk_autoresize   = true
 
     ip_configuration {
-      ipv4_enabled                                  = false   # no public IP
+      ipv4_enabled                                  = false # no public IP
       private_network                               = var.network_id
       enable_private_path_for_google_cloud_services = true
     }
@@ -36,7 +36,7 @@ resource "google_sql_database_instance" "primary" {
     }
 
     maintenance_window {
-      day          = 7  # Sunday
+      day          = 7 # Sunday
       hour         = 4
       update_track = "stable"
     }
@@ -59,7 +59,7 @@ resource "google_sql_database_instance" "primary" {
     user_labels = var.labels
   }
 
-  deletion_protection = false  # set true when going production
+  deletion_protection = false # set true when going production
 }
 
 resource "google_sql_database" "app" {

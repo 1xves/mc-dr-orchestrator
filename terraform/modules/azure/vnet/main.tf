@@ -39,7 +39,7 @@ resource "azurerm_subnet" "postgresql" {
 }
 
 resource "azurerm_subnet" "gateway" {
-  name                 = "GatewaySubnet"   # Azure requires this exact name
+  name                 = "GatewaySubnet" # Azure requires this exact name
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = [cidrsubnet(var.vnet_cidr, 4, 15)]

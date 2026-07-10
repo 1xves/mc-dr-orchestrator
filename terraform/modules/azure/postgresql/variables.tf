@@ -32,7 +32,7 @@ variable "sku_name" {
 
 variable "storage_mb" {
   type    = number
-  default = 32768   # 32 GB minimum
+  default = 32768 # 32 GB minimum
 }
 
 variable "db_name" {

@@ -44,8 +44,8 @@ variable "gke_node_machine_type" {
 }
 
 variable "gke_node_min_count" {
-  type    = number
-  default = 0
+  type        = number
+  default     = 0
   description = "Min nodes per zone — 0 lets you scale to zero for cost savings"
 }
 
@@ -83,14 +83,14 @@ variable "gcp_state_bucket" {
 
 # ── Azure ─────────────────────────────────────────────────────────────────────
 variable "azure_location" {
-  type    = string
-  default = "eastus2"
+  type        = string
+  default     = "eastus2"
   description = "Azure region for standby resources — eastus2 avoids the restricted eastus zone"
 }
 
 variable "azure_vnet_cidr" {
-  type    = string
-  default = "10.1.0.0/16"
+  type        = string
+  default     = "10.1.0.0/16"
   description = "Must not overlap with gcp_vpc_cidr for VPN routing"
 }
 
@@ -152,14 +152,14 @@ variable "slack_webhook_url" {
 
 # ── DNS / Routing (optional) ──────────────────────────────────────────────────
 variable "domain_name" {
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
   description = "Root domain for Cloud DNS records — leave empty to skip DNS setup"
 }
 
 variable "primary_endpoint_fqdn" {
-  type    = string
-  default = "placeholder.example.com"
+  type        = string
+  default     = "placeholder.example.com"
   description = "FQDN polled by health_monitor — update after GKE ingress IP is known"
 }
 
